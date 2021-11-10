@@ -12,9 +12,24 @@ You can view the current roadmap for the project here- this is the rough order i
 
 - [ ] CPU
   - [ ] Basic structure
+    - [ ] Register pairs and associated utility functions
+    - [ ] Bus
   - [ ] Opcodes
     - [ ] 8-bit
     - [ ] 16-bit
 - [ ] PPU
 - [ ] Unit tests
 - [ ] User interface
+
+## Project Log 🌀
+#### 10/11/21: Register Pair
+I had previously laid out the blueprint for the `RegisterPair` struct which would be used to implement the DMG's 
+registers, as the name implies. Specifically however, this struct will ideally take a closure in order to manipulate its fields-
+two `u8` variables, one for each register- whilst also offering necessary functionality such as conversion between decimal and BCD
+representations in binary. Therefore, I am designing this struct in a way that it can return an appropriate `Result` based on whether there
+were any issues or any warnings, such as overflows or carries. This would ideally help me save time when implementing opcodes as I can pattern match this result
+then set the appropriate flags within the CPU.
+
+Currently, the decimal-to-BCD function has been completed as well as tested with a small unit test. However, it uses
+an unideal method of concatenating two strings and then parsing this as a `u8` which has a slightly unnecessary memory
+footprint.
