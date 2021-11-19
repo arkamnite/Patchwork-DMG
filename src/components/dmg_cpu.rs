@@ -137,16 +137,31 @@ impl CPU {
     }
 }
 
+pub fn msb(v: u16) -> u8 {
+    (v >> 8) as u8
+}
+
+pub fn lsb(v: u16) -> u8 {
+    ((v << 8) >> 8) as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::dmg_cpu::AddressingMode::ImmediateSixteen;
+    use crate::components::dmg_cpu::AddressingMode::*;
 
     #[test]
-    fn memory_be_read() {
+    fn msb_lsb() {
+        assert_eq!(0xAB, msb(0xABCD));
+        assert_eq!(0xCD, lsb(0xABCD));
+    }
+
+    #[test]
+    fn memory_read() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0xCD;
         cpu.memory[1] = 0xAB;
+        assert_eq!(0xCD, cpu.read_memory(ImmediateEight));
         assert_eq!(0xABCD, cpu.read_memory(ImmediateSixteen));
     }
 }
