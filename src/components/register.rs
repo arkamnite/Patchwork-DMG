@@ -10,7 +10,7 @@ pub struct RegPair {
 /// Whenever an operation is performed on a register, there may be an overflow etc.
 /// All operations will return a BitResult that will indicate whether there are any important
 /// considerations once an operation has completed.
-enum BitResult {
+pub enum BitResult {
     Standard,
     Overflow,
     Underflow,

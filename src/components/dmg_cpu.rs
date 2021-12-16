@@ -97,7 +97,8 @@ enum AddressingMode<'a> {
     UnsignedEight, /// Used particularly for 0xE0 and 0xF0, where an offset of 0xFF00 is used.
     AddressSixteen(u16),
     SignedEight(u8),
-    RegisterDirect(&'a RegPair),
+    RegisterPairDirect(&'a RegPair),
+    RegisterDirect(&'a RegPair, bool),
 }
 
 impl CPU {
@@ -160,8 +161,18 @@ impl CPU {
                 // This will take the signed operand in memory, and convert it from TC to an unsigned 16 bit integer.
                 from_signed_byte(self.memory[self.pc as usize] as u8) as u16
             }
-            AddressingMode::RegisterDirect(reg) => {
+            AddressingMode::RegisterPairDirect(reg) => {
                 self.memory[reg.get_wide() as usize]
+            }
+            AddressingMode::RegisterDirect(reg, isHigh) => {
+                // We will read from the memory address in either the high or low byte of the RegPair
+                if isHigh {
+                    // println!("Reg value is {:#04x}", reg.get_high());
+                    self.memory[reg.get_high() as usize]
+                } else {
+                    // println!("Reg value is {:#04x}", reg.get_low());
+                    self.memory[reg.get_low() as usize]
+                }
             }
             _ => { self.memory[self.pc as usize] as u16}
         };
@@ -238,5 +249,15 @@ mod tests {
         cpu.cycle();
         cpu.cycle();
         assert_eq!(0xFEE2, cpu.read_memory(UnsignedEight)); // Come back and look at def for this addressing type.
+
+        // Register(pair) Direct mode
+        let mut reg = RegPair::new();
+        reg.set_wide(0x1346);
+        cpu.memory[0x1346] = 1334;
+        cpu.memory[0x13] = 15;
+        cpu.memory[0x46] = 32;
+        assert_eq!(1334, cpu.read_memory(RegisterPairDirect(&reg)));
+        assert_eq!(15, cpu.read_memory(RegisterDirect(&reg, true)));
+        assert_eq!(32, cpu.read_memory(RegisterDirect(&reg, false)));
     }
 }
