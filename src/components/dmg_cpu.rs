@@ -131,15 +131,15 @@ impl CPU {
     /// Will return the correct value from memory that shall be stored in the memory data register.
     pub fn read_memory(&self, mode: AddressingMode) -> u16 {
         let mem_val: u16 = match mode {
-            AddressingMode::ImmediateEight => { self.memory[self.pc as usize] }
+            AddressingMode::ImmediateEight => { self.memory[self.pc as usize] as u16}
             AddressingMode::ImmediateSixteen => {
                 // Upper bytes are in first byte of memory.
                 let mut val = self.memory[(self.pc + 1) as usize];
                 // We now collect the upper bytes from the second byte in memory.
-                println!("{:0x}", val);
+                // println!("{:0x}", val);
                 val <<= 8;
                 val = val + self.memory[self.pc as usize];
-                println!("{:0x}", val);
+                // println!("{:0x}", val);
                 // We now combine the two bytes together.
                 val
             }
@@ -150,13 +150,14 @@ impl CPU {
             AddressingMode::AddressSixteen(val) => {
                 self.memory[val as usize]
             }
-            _ => {self.memory[self.pc as usize]}
-            // AddressingMode::BigEndianSixteen => {self.memory[self.pc as usize]}
-            // AddressingMode::UnsignedEight(_) => {self.memory[self.pc as usize]}
-            // AddressingMode::AddressSixteen(_) => {self.memory[self.pc as usize]}
-            // AddressingMode::SignedEight(_) => {self.memory[self.pc as usize]}
-            // AddressingMode::Implied => {self.memory[self.pc as usize]}
-            // AddressingMode::RegisterDirect(_) => {self.memory[self.pc as usize]}
+            AddressingMode::SignedEight(val) => {
+                // This will take the signed operand in memory, and convert it from TC to an unsigned 16 bit integer.
+                from_signed_byte(self.memory[self.pc as usize] as u8) as u16
+            }
+            AddressingMode::RegisterDirect(reg) => {
+                self.memory[reg.get_wide() as usize]
+            }
+            _ => { self.memory[self.pc as usize] as u16}
         };
 
         mem_val
@@ -195,6 +196,7 @@ pub fn get_magnitude_tc(from: i8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::format;
     use super::*;
     use crate::components::dmg_cpu::AddressingMode::*;
 
@@ -223,8 +225,12 @@ mod tests {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0xCD;
         cpu.memory[1] = 0xAB;
+        cpu.memory[2] = 0b1110_0010; // -30;
+        cpu.memory[0xFF00 + 2] = 0xFEE2;
         assert_eq!(0xCD, cpu.read_memory(ImmediateEight)); // 8-bit immediate reading, such as with opcode 0x06: LD B, d8
         assert_eq!(0xABCD, cpu.read_memory(ImmediateSixteen)); // 16-bit immediate reading, such as with opcode LD HL, d16
-        assert_eq!(0xFFCD, cpu.read_memory(UnsignedEight));
+        cpu.cycle();
+        cpu.cycle();
+        assert_eq!(0xFEE2, cpu.read_memory(UnsignedEight)); // Come back and look at def for this addressing type.
     }
 }

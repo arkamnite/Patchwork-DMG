@@ -96,6 +96,12 @@ impl RegPair {
         bcd_1.push_str(bcd_2.as_str());
         u8::from_str_radix(bcd_1.as_str(), 2)
     }
+
+    /// Get the 16-bit integer stored across this register pair.
+    pub fn get_wide(&self) -> u16 {
+        let wide: u16 = self.get_high() as u16;
+        (wide << 8) + (self.get_low() as u16)
+    }
 }
 
 impl Display for RegPair {
@@ -140,5 +146,12 @@ mod tests {
     fn bcd_to_decimal() {
         let dec = RegPair::bcd_to_decimal(0b0011_0010); // BCD for 32
         assert_eq!(dec, 32);
+    }
+
+    #[test]
+    fn get_wide() {
+        let mut reg = RegPair::new();
+        reg.set_wide(0b0010_0101_1100_0110);
+        assert_eq!(0b0010_0101_1100_0110, reg.get_wide());
     }
 }
