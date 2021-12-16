@@ -13,7 +13,7 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] CPU
   - [ ] Basic structure
     - [x] Register pairs and associated utility functions
-    - [ ] Addressing Modes and memory reading
+    - [x] Addressing Modes and memory reading
     - [ ] Bus
   - [ ] Opcodes
     - [ ] 8-bit
@@ -23,6 +23,17 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] User interface
 
 ## Project Log 🌀
+#### 16/12/21: CPU and Addressing modes
+_Resumed work after a brief hiatus due to term-time commitments, i.e. coursework._
+
+All addressing modes have been implemented and tested. In practical terms, this means that
+given a specific addressing mode, my implementation can correctly return a value stored from
+memory which will be then stored in the MBR/MDR of the CPU. The reason for this design choice is
+to provide flexibility with implementing individual opcodes and to reduce the likelihood of errors
+occurring in the implementation of such individual opcodes (without a standard method of reading
+from memory, the same code would have to be rewritten many times which would also make the code
+more bloated). 
+
 #### 12/11/21: CPU and related flags
 This stage saw the prototype layout for the DMG CPU, including structs to represent the CPU itself,
 as well as its constituent status flag register(s). The previously defined and tested `RegPair`

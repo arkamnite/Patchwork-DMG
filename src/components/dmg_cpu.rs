@@ -131,6 +131,12 @@ impl CPU {
     /// Will return the correct value from memory that shall be stored in the memory data register.
     pub fn read_memory(&self, mode: AddressingMode) -> u16 {
         let mem_val: u16 = match mode {
+            AddressingMode::Implied => {
+                // We leave the CPU exactly as it was before.
+                // We may later on "automate" the procedure of setting the MDR based on the result
+                // of reading memory, and hence it is ideal to return the original value of the MDR.
+                self.mdr
+            }
             AddressingMode::ImmediateEight => { self.memory[self.pc as usize] as u16}
             AddressingMode::ImmediateSixteen => {
                 // Upper bytes are in first byte of memory.
