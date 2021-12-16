@@ -92,10 +92,9 @@ impl LCDReg {
 // Lifetime parameter used here as we need to know the lifetime of the register-pair we are borrowing from.
 enum AddressingMode<'a> {
     Implied, // Stuff like CPL and LD SP,IY
-    ImmediateEight, // Found in the next instruction.
-    ImmediateSixteen, // Found in the next two instructions.
-    BigEndianSixteen, // BE, found in the next two instructions.
-    UnsignedEight(u8),
+    ImmediateEight, /// Found in the next instruction.
+    ImmediateSixteen, /// Found in the next two instructions.
+    UnsignedEight, /// Used particularly for 0xE0 and 0xF0, where an offset of 0xFF00 is used.
     AddressSixteen(u16),
     SignedEight(u8),
     RegisterDirect(&'a RegPair),
@@ -144,6 +143,13 @@ impl CPU {
                 // We now combine the two bytes together.
                 val
             }
+            AddressingMode::UnsignedEight => {
+                // This mode only uses the operand as an offset for 0xFF00, and hence we only need to add the value to
+                self.memory[(0xFF00 + self.pc) as usize]
+            }
+            AddressingMode::AddressSixteen(val) => {
+                self.memory[val as usize]
+            }
             _ => {self.memory[self.pc as usize]}
             // AddressingMode::BigEndianSixteen => {self.memory[self.pc as usize]}
             // AddressingMode::UnsignedEight(_) => {self.memory[self.pc as usize]}
@@ -165,6 +171,28 @@ pub fn lsb(v: u16) -> u8 {
     ((v << 8) >> 8) as u8
 }
 
+/// Will convert an 8-bit number represented in TC to an 8-bit signed number.
+pub fn from_signed_byte(tc: u8) -> i8 {
+    // Check if we have a negative number.
+    if (tc & 0b1000_000) == 0b1000_000 {
+        // Find out what this number is the negative of.
+        let flipped = !tc + 1;
+        flipped as i8 * -1
+    } else { // Non-negative number, so return the number as it is.
+        tc as i8
+    }
+}
+
+/// Will convert an 8-bit signed number to an 8-bit unsigned number represented in TC.
+pub fn get_magnitude_tc(from: i8) -> u8 {
+    // Check if we have a negative number.
+    if from < 0 {
+        (from * -1) as u8
+    } else {
+        from as u8
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,11 +205,26 @@ mod tests {
     }
 
     #[test]
+    fn from_tc() {
+        assert_eq!(-59, from_signed_byte(0b1100_0101));
+        assert_eq!(-90, from_signed_byte(0b1010_0110));
+        assert_eq!(32, from_signed_byte(0b0010_0000));
+    }
+
+    #[test]
+    fn to_tc() {
+        assert_eq!(0b0010_0000, get_magnitude_tc(32));
+        assert_eq!(90, get_magnitude_tc(-90));
+        // This fails as a function because the computer already stores these as
+    }
+
+    #[test]
     fn immediate_memory_read() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0xCD;
         cpu.memory[1] = 0xAB;
         assert_eq!(0xCD, cpu.read_memory(ImmediateEight)); // 8-bit immediate reading, such as with opcode 0x06: LD B, d8
         assert_eq!(0xABCD, cpu.read_memory(ImmediateSixteen)); // 16-bit immediate reading, such as with opcode LD HL, d16
+        assert_eq!(0xFFCD, cpu.read_memory(UnsignedEight));
     }
 }
