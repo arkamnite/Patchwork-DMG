@@ -1,16 +1,29 @@
 use crate::components::register::RegPair;
 
 pub struct CPU {
+    /// The accumulator register.
     a: u8,
+    /// The stack pointer.
     sp: u16,
+    /// The program counter.
     pc: u16,
-    adr: u16,
+    /// The memory address register. Stores the address that memory must either be read/written from/to.
+    mar: u16,
+    /// The memory data register. Stores the data retrieved from memory.
+    mdr: u16,
+    /// The BC register pair.
     bc: RegPair,
+    /// The DE register pair.
     de: RegPair,
+    /// The HL register pair.
     hl: RegPair,
+    /// The status flag(s) register. This is defined as a Flags struct.
     flags: Flags,
+    /// The LCD control register.
     lcd_reg: LCDReg,
+    /// The total memory access space of the DMG unit.
     pub memory: [u16; 65536],
+    /// The number of cycles clocked so far.
     pub cycles: u32,
 }
 
@@ -76,13 +89,16 @@ impl LCDReg {
     }
 }
 
-enum AddressingMode {
-    ImmediateEight,
-    ImmediateSixteen,
-    BigEndianSixteen,
+// Lifetime parameter used here as we need to know the lifetime of the register-pair we are borrowing from.
+enum AddressingMode<'a> {
+    Implied, // Stuff like CPL and LD SP,IY
+    ImmediateEight, // Found in the next instruction.
+    ImmediateSixteen, // Found in the next two instructions.
+    BigEndianSixteen, // BE, found in the next two instructions.
     UnsignedEight(u8),
     AddressSixteen(u16),
     SignedEight(u8),
+    RegisterDirect(&'a RegPair),
 }
 
 impl CPU {
@@ -92,7 +108,8 @@ impl CPU {
             a: 0,
             sp: 0,
             pc: 0,
-            adr: 0,
+            mar: 0,
+            mdr: 0,
             bc: RegPair::new(),
             de: RegPair::new(),
             hl: RegPair::new(),
@@ -112,7 +129,7 @@ impl CPU {
 
     }
 
-    /// Will load the address buffer appropriately based on the provided addressing mode.
+    /// Will return the correct value from memory that shall be stored in the memory data register.
     pub fn read_memory(&self, mode: AddressingMode) -> u16 {
         let mem_val: u16 = match mode {
             AddressingMode::ImmediateEight => { self.memory[self.pc as usize] }
@@ -127,10 +144,13 @@ impl CPU {
                 // We now combine the two bytes together.
                 val
             }
-            AddressingMode::BigEndianSixteen => {self.memory[self.pc as usize]}
-            AddressingMode::UnsignedEight(_) => {self.memory[self.pc as usize]}
-            AddressingMode::AddressSixteen(_) => {self.memory[self.pc as usize]}
-            AddressingMode::SignedEight(_) => {self.memory[self.pc as usize]}
+            _ => {self.memory[self.pc as usize]}
+            // AddressingMode::BigEndianSixteen => {self.memory[self.pc as usize]}
+            // AddressingMode::UnsignedEight(_) => {self.memory[self.pc as usize]}
+            // AddressingMode::AddressSixteen(_) => {self.memory[self.pc as usize]}
+            // AddressingMode::SignedEight(_) => {self.memory[self.pc as usize]}
+            // AddressingMode::Implied => {self.memory[self.pc as usize]}
+            // AddressingMode::RegisterDirect(_) => {self.memory[self.pc as usize]}
         };
 
         mem_val
@@ -157,11 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn memory_read() {
+    fn immediate_memory_read() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0xCD;
         cpu.memory[1] = 0xAB;
-        assert_eq!(0xCD, cpu.read_memory(ImmediateEight));
-        assert_eq!(0xABCD, cpu.read_memory(ImmediateSixteen));
+        assert_eq!(0xCD, cpu.read_memory(ImmediateEight)); // 8-bit immediate reading, such as with opcode 0x06: LD B, d8
+        assert_eq!(0xABCD, cpu.read_memory(ImmediateSixteen)); // 16-bit immediate reading, such as with opcode LD HL, d16
     }
 }
