@@ -12,7 +12,8 @@ You can view the current roadmap for the project here- this is the rough order i
 
 - [ ] CPU
   - [ ] Basic structure
-    - [ ] Register pairs and associated utility functions
+    - [x] Register pairs and associated utility functions
+    - [ ] Addressing Modes and memory reading
     - [ ] Bus
   - [ ] Opcodes
     - [ ] 8-bit
@@ -22,6 +23,15 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] User interface
 
 ## Project Log 🌀
+#### 12/11/21: CPU and related flags
+This stage saw the prototype layout for the DMG CPU, including structs to represent the CPU itself,
+as well as its constituent status flag register(s). The previously defined and tested `RegPair`
+struct was used to implement basic register pairs. Additionally, a prototype for the LCD control register
+has been implemented. 
+
+The current testing focus is on accurate memory reading based on a given addressing mode (represented as 
+an enum at the moment). Once this is complete, then work on opcode implementation can begin using closures. 
+
 #### 10/11/21: Register Pair
 I had previously laid out the blueprint for the `RegisterPair` struct which would be used to implement the DMG's 
 registers, as the name implies. Specifically however, this struct will ideally take a closure in order to manipulate its fields-
@@ -33,3 +43,4 @@ then set the appropriate flags within the CPU.
 Currently, the decimal-to-BCD function has been completed as well as tested with a small unit test. However, it uses
 an unideal method of concatenating two strings and then parsing this as a `u8` which has a slightly unnecessary memory
 footprint.
+
