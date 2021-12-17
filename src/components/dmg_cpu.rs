@@ -7,6 +7,8 @@ pub struct CPU {
     sp: u16,
     /// The program counter.
     pc: u16,
+    /// The instruction register. Stores the current instruction.
+    ir: u16,
     /// The memory address register. Stores the address that memory must either be read/written from/to.
     mar: u16,
     /// The memory data register. Stores the data retrieved from memory.
@@ -108,6 +110,7 @@ impl CPU {
             a: 0,
             sp: 0,
             pc: 0,
+            ir: 0,
             mar: 0,
             mdr: 0,
             bc: RegPair::new(),
@@ -121,11 +124,17 @@ impl CPU {
     }
 
     pub fn cycle(&mut self) {
+        // Fetch opcode
+        self.ir = self.memory[self.pc as usize];
+        // Decode the opcode and execute.
+        self.decode_execute();
+        // Increase program counter.
         self.pc = self.pc + 1;
     }
 
-    /// Given an opcode, this function will decode this using pattern matching and will hence
-    fn decode_execute(&self, opcode: u16) {
+    /// Given the stored opcode, this function will decode this using pattern matching and will hence
+    fn decode_execute(&self) {
+        // Match on the current opcode.
 
     }
 
@@ -178,6 +187,20 @@ impl CPU {
         };
 
         mem_val
+    }
+
+    /*  OPCODES BEGIN HERE. These are only to be used after decoding an opcode! They hence run
+        under the impression that current values etc have already been resolved. */
+    fn nop(&self) {
+
+    }
+
+    fn ld_bc(&self) {
+
+    }
+
+    fn ld_m_bc(&self) {
+
     }
 }
 
@@ -259,5 +282,38 @@ mod tests {
         assert_eq!(1334, cpu.read_memory(RegisterPairDirect(&reg)));
         assert_eq!(15, cpu.read_memory(RegisterDirect(&reg, true)));
         assert_eq!(32, cpu.read_memory(RegisterDirect(&reg, false)));
+    }
+}
+
+#[cfg(test)]
+mod opcode_tests {
+    // Opcode tests follow this naming convention.
+    // name_to_from()
+    // For example, 0x02 (LD (BC), A) => ld_mem_16_reg
+    // This may be followed by an addressing mode specifier, or an annotation to distinguish this test from similar to-from scenarios.
+
+    #[test]
+    fn ld_mem_8_reg() {
+
+    }
+
+    #[test]
+    fn ld_mem_16_reg() {
+
+    }
+
+    #[test]
+    fn ld_reg_reg() {
+
+    }
+
+    #[test]
+    fn ld_reg_mem_8() {
+
+    }
+
+    #[test]
+    fn ld_reg_mem_16() {
+
     }
 }
