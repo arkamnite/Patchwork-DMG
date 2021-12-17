@@ -23,6 +23,12 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] User interface
 
 ## Project Log 🌀
+#### 17/12/21: Opcodes
+Work has now begun on implementing opcodes, which are to be decoded using a large `match` statement.
+A current point of doubt I have is how and when to use BCD (such as when incrementing registers) and
+also regarding precise usage of status flags, which I now realise I understand less thoroughly than
+previously anticipated.
+
 #### 16/12/21: CPU and Addressing modes
 _Resumed work after a brief hiatus due to term-time commitments, i.e. coursework._
 
