@@ -40,6 +40,16 @@ impl RegPair {
         Ok(bcd)
     }
 
+    pub fn set_high_bin(&mut self, val: u8) {
+        // Set the high register value.
+        self.high_bits = val;
+    }
+
+    pub fn set_low_bin(&mut self, val: u8) {
+        // Set the low register value.
+        self.low_bits = val;
+    }
+
     /// Set the bits across both the high and low registers directly.
     /// This will not encode them in BCD! If you need to encode these values into BCD, then use successive calls to
     /// set_high_bcd and set_low_bcd respectively.
