@@ -23,6 +23,11 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] User interface
 
 ## Project Log 🌀
+#### 18/12/21: INC BC, INC B
+Added error type for failed opcode execution (this should be set to `NOP` when there is an error),
+wrote some unit tests and also implemented opcode `INC r8` using a function that can be expanded
+to all `r8`. Must continue testing, and checking where to use BCD appropriately.
+
 #### 17/12/21: Opcodes
 Work has now begun on implementing opcodes, which are to be decoded using a large `match` statement.
 A current point of doubt I have is how and when to use BCD (such as when incrementing registers) and

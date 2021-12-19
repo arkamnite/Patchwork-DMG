@@ -1,5 +1,5 @@
-use crate::components::dmg_cpu::AddressingMode::ImmediateSixteen;
-use crate::components::dmg_cpu::RegisterPairs::BC;
+use std::{error, fmt};
+use std::fmt::Formatter;
 use crate::components::register::{BitResult, RegPair};
 
 pub struct CPU {
@@ -94,13 +94,13 @@ impl LCDReg {
 }
 
 // Lifetime parameter used here as we need to know the lifetime of the register-pair we are borrowing from.
-enum AddressingMode<'a> {
+pub enum AddressingMode<'a> {
     Implied, // Stuff like CPL and LD SP,IY
     ImmediateEight, /// Found in the next instruction.
     ImmediateSixteen, /// Found in the next two instructions.
     UnsignedEight, /// Used particularly for 0xE0 and 0xF0, where an offset of 0xFF00 is used.
     AddressSixteen(u16),
-    SignedEight(u8),
+    SignedEight,
     RegisterPairDirect(&'a RegPair),
     RegisterDirect(&'a RegPair, bool),
 }
@@ -123,6 +123,29 @@ enum Registers {
     L,
     SP,
 }
+
+#[derive(Debug, Clone)]
+struct OpcodeError {
+    info: String,
+    opcode: u8,
+}
+
+impl OpcodeError {
+    fn new(info: String, opcode: u8) -> OpcodeError {
+        OpcodeError {
+            info,
+            opcode
+        }
+    }
+}
+
+impl fmt::Display for OpcodeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Error when executing opcode: {:#04x}\n Message: {}", self.opcode, self.info)
+    }
+}
+
+impl error::Error for OpcodeError {}
 
 impl CPU {
 
@@ -147,6 +170,7 @@ impl CPU {
     pub fn cycle(&mut self) {
         // Fetch opcode
         self.ir = self.memory[self.pc as usize];
+        println!("Opcode found: {:#2x}", self.ir);
         // Program counter is incremented to enable operand reading.
         self.pc += 1;
         // Decode the opcode and execute.
@@ -157,20 +181,24 @@ impl CPU {
     fn decode_execute(&mut self) {
         // Match on the current opcode.
         match self.ir {
-            0x00 => { self.cycles += 4; }  // NOP
+            0x00 => { self.pc += 0; self.cycles += 4; }  // NOP
             0x01 => {
                 // LD BC,d16
-                self.mdr = self.read_memory(ImmediateSixteen);
-                self.ld_reg_pair(BC);
+                self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+                self.ld_reg_pair(RegisterPairs::BC);
+                self.pc += 2;
+                self.cycles += 12;
             }
             0x02 => {
                 // LD (BC), A
                 self.mdr = self.a as u16;
                 self.mar = self.bc.get_wide();
                 self.ld_memory();
+                self.pc += 0;
+                self.cycles += 8;
             }
-            0x03 => { self.bc.set_wide(self.bc.get_wide() + 1); self.pc += 1; self.cycles += 8; }  // INC BC
-            0x04 => { self.bc.set_high_bin(self.bc.get_high() + 1); }  // INC B
+            0x03 => { self.bc.set_wide(self.bc.get_wide() + 1); self.pc += 0; self.cycles += 8; }  // INC BC
+            0x04 => { self.inc_reg(Registers::B).unwrap(); self.pc += 0; self.cycles += 8; }  // INC B
             0x05 => {}  // DEC B
             0x06 => {}  // LD B,d8
             0x07 => {}  // RLCA
@@ -477,7 +505,7 @@ impl CPU {
             AddressingMode::AddressSixteen(val) => {
                 self.memory[val as usize]
             }
-            AddressingMode::SignedEight(val) => {
+            AddressingMode::SignedEight => {
                 // This will take the signed operand in memory, and convert it from TC to an unsigned 16 bit integer.
                 from_signed_byte(self.memory[self.pc as usize] as u8) as u16
             }
@@ -494,7 +522,6 @@ impl CPU {
                     self.memory[reg.get_low() as usize]
                 }
             }
-            _ => { self.memory[self.pc as usize] as u16}
         };
 
         mem_val
@@ -533,17 +560,49 @@ impl CPU {
         self.cycles += 8;
     }
 
-    fn inc_reg(&mut self, reg: Registers) {
-        // Modify the correct register.
-        match reg {
-            Registers::A => { self.a += 1; }
-            Registers::B => { self.bc.set_high_bin(self.bc.get_high() + 1); }
-            Registers::C => { self.bc.set_low_bin(self.bc.get_low() + 1); }
-            Registers::D => { self.de.set_high_bin(self.de.get_high() + 1); }
-            Registers::E => { self.de.set_low_bin(self.de.get_low() + 1); }
-            Registers::H => { self.hl.set_high_bin(self.hl.get_high() + 1); }
-            Registers::L => { self.hl.set_low_bin(self.hl.get_low() + 1); }
-            Registers::SP => { self.sp += 1; }
+    /// Increment the value stored in one half-register (i.e. a single register).
+    /// It will increment the BCD value inside this register and hence the result will be stored as BCD too.
+    fn inc_reg(&mut self, reg: Registers) -> Result<u8, OpcodeError> {
+        // Match the correct RegisterPair and store the correct reference.
+        let mut high = false;
+        let regtarg: Option<&mut RegPair> = match reg {
+            Registers::B => { high = true; Some(&mut self.bc) }
+            Registers::C => { high = false; Some(&mut self.bc) }
+            Registers::D => { high = true; Some(&mut self.de) }
+            Registers::E => { high = false; Some(&mut self.de) }
+            Registers::H => { high = true; Some(&mut self.hl) }
+            Registers::L => { high = false; Some(&mut self.hl) }
+            _ => { None }
+        };
+
+        // Check if this was used appropriately.
+        if regtarg.is_none() {
+            return Err(OpcodeError::new("Attempted to increment the A or SP register.".to_string(), self.ir as u8));
+        } else {
+            // Create our local register target from within a register pair.
+            let target = regtarg.unwrap();
+
+            // Create a local copy of the old value.
+            let oldval = if high {
+                RegPair::bcd_to_decimal(target.get_high())
+            } else {
+                RegPair::bcd_to_decimal(target.get_low())
+            };
+
+            // Adjust the correct register from within a register pair.
+            if high {
+                target.set_high_bcd(oldval + 1).unwrap();
+                // Toggle zero flag as appropriate.
+                self.flags.zero = RegPair::bcd_to_decimal(target.get_high()) == 0;
+
+            } else {
+                target.set_low_bcd(oldval + 1).unwrap();
+                // Toggle zero flag as appropriate.
+                self.flags.zero = RegPair::bcd_to_decimal(target.get_low()) == 0;
+            }
+            // Toggle carry flag as appropriate.
+            self.flags.half_carry = (oldval & 0b1000) == 0b1000;
+            return Ok(oldval + 1);
         }
     }
 }
@@ -664,8 +723,33 @@ mod opcode_tests {
 
 #[cfg(test)]
 mod opcodes {
-    #[test]
-    fn o1() {
+    use crate::components::dmg_cpu::CPU;
+    use crate::components::register::RegPair;
 
+    #[test]
+    fn inc_bc() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x03;
+        cpu.memory[1] = 0x03;
+        cpu.memory[2] = 0x03;
+        cpu.memory[3] = 0x03;
+        cpu.cycle();
+        assert_eq!(1, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(2, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(3, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(4, cpu.bc.get_wide());
+    }
+
+    #[test]
+    fn inc_b() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x04;
+        cpu.cycle();
+        assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+
+        // Todo: Add tests for 0x14, 0x24, 0x34, 0x0C, 0x1C, 0x2C
     }
 }
