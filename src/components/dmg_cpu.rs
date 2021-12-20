@@ -1,6 +1,8 @@
 use std::{error, fmt};
 use std::fmt::Formatter;
 use crate::components::register::{BitResult, RegPair};
+use std::num::Wrapping;
+use std::ops::Add;
 
 pub struct CPU {
     /// The accumulator register.
@@ -124,6 +126,11 @@ enum Registers {
     SP,
 }
 
+enum RotateDirection {
+    Left,
+    Right,
+}
+
 #[derive(Debug, Clone)]
 struct OpcodeError {
     info: String,
@@ -198,15 +205,35 @@ impl CPU {
                 self.cycles += 8;
             }
             0x03 => { self.bc.set_wide(self.bc.get_wide() + 1); self.pc += 0; self.cycles += 8; }  // INC BC
-            0x04 => { self.inc_reg(Registers::B).unwrap(); self.pc += 0; self.cycles += 8; }  // INC B
-            0x05 => {}  // DEC B
-            0x06 => {}  // LD B,d8
-            0x07 => {}  // RLCA
-            0x08 => {}  // LD (a16),SP
+            0x04 => { self.inc_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8; }  // INC B
+            0x05 => { self.dec_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8;}  // DEC B
+            0x06 => {
+                self.mdr = self.read_memory(AddressingMode::ImmediateEight);
+                self.bc.set_high_bin(self.mdr as u8);
+                self.pc += 1;
+                self.cycles += 8;
+            }  // LD B,d8
+            0x07 => { self.rotate_a(RotateDirection::Left, false); self.pc += 0; self.cycles += 4; }  // RLCA
+            0x08 => {
+                // LD (a16),SP
+                // Load the lower byte of SP at a16.
+                self.mdr = (self.sp << 8) >> 8;
+                self.mar = self.read_memory(AddressingMode::ImmediateSixteen);
+                // println!("CPU MDR: {}, CPU MAR: {}", self.mdr, self.mar);
+                self.ld_memory();
+                // Load the upper byte of SP at a16 + 1;
+                self.mdr = self.sp >> 8;
+                self.mar = self.mar + 1;
+                // println!("CPU MDR: {}, CPU MAR: {}", self.mdr, self.mar);
+                self.ld_memory();
+                // Increment PC and cycles accordingly.
+                self.pc += 2;
+                self.cycles += 20;
+            }
             0x09 => {}  // ADD HL,BC
             0x0A => {}  // LD A,(BC)
             0x0B => {}  // DEC BC
-            0x0C => {}  // INC C
+            0x0C => { self.inc_reg_8(Registers::C).unwrap(); self.pc += 0; self.cycles += 8; }  // INC C
             0x0D => {}  // DEC C
             0x0E => {}  // LD C,d8
             0x0F => {}  // RRCA
@@ -562,7 +589,7 @@ impl CPU {
 
     /// Increment the value stored in one half-register (i.e. a single register).
     /// It will increment the BCD value inside this register and hence the result will be stored as BCD too.
-    fn inc_reg(&mut self, reg: Registers) -> Result<u8, OpcodeError> {
+    fn inc_reg_8(&mut self, reg: Registers) -> Result<u8, OpcodeError> {
         // Match the correct RegisterPair and store the correct reference.
         let mut high = false;
         let regtarg: Option<&mut RegPair> = match reg {
@@ -576,8 +603,8 @@ impl CPU {
         };
 
         // Check if this was used appropriately.
-        if regtarg.is_none() {
-            return Err(OpcodeError::new("Attempted to increment the A or SP register.".to_string(), self.ir as u8));
+        return if regtarg.is_none() {
+            Err(OpcodeError::new("Attempted to increment the A or SP register.".to_string(), self.ir as u8))
         } else {
             // Create our local register target from within a register pair.
             let target = regtarg.unwrap();
@@ -594,17 +621,111 @@ impl CPU {
                 target.set_high_bcd(oldval + 1).unwrap();
                 // Toggle zero flag as appropriate.
                 self.flags.zero = RegPair::bcd_to_decimal(target.get_high()) == 0;
-
             } else {
                 target.set_low_bcd(oldval + 1).unwrap();
                 // Toggle zero flag as appropriate.
                 self.flags.zero = RegPair::bcd_to_decimal(target.get_low()) == 0;
             }
+            // This instruction always sets the subtraction flag to false;
+            self.flags.subtraction = false;
             // Toggle carry flag as appropriate.
-            self.flags.half_carry = (oldval & 0b1000) == 0b1000;
-            return Ok(oldval + 1);
+            // We need to toggle a half carry if the 0th bit of the oldval is set yet incrementing resulted in an overall zero.
+            // This is the only way we would have caused a carry on the third bit.
+            self.flags.half_carry = ((oldval & 0b0001) == 0b0001) && self.flags.zero;
+            Ok(oldval + 1)
         }
     }
+
+    /// Decrement a value in an r8 register. This is functionally very similar to inc_reg_8 except
+    /// we use a negative number as an operand to increment the value by.
+    fn dec_reg_8(&mut self, reg:Registers) -> Result<u8, OpcodeError> {
+        // Match the correct RegisterPair and store the correct reference.
+        let mut high = false;
+        let regtarg: Option<&mut RegPair> = match reg {
+            Registers::B => { high = true; Some(&mut self.bc) }
+            Registers::C => { high = false; Some(&mut self.bc) }
+            Registers::D => { high = true; Some(&mut self.de) }
+            Registers::E => { high = false; Some(&mut self.de) }
+            Registers::H => { high = true; Some(&mut self.hl) }
+            Registers::L => { high = false; Some(&mut self.hl) }
+            _ => { None }
+        };
+
+        // Check if this was used appropriately.
+        return if regtarg.is_none() {
+            Err(OpcodeError::new("Attempted to increment the A or SP register.".to_string(), self.ir as u8))
+        } else {
+            // Create our local register target from within a register pair.
+            let target = regtarg.unwrap();
+
+            // Create a local copy of the old value.
+            let oldval = if high {
+                RegPair::bcd_to_decimal(target.get_high())
+            } else {
+                RegPair::bcd_to_decimal(target.get_low())
+            };
+
+            let old_wrapped = Wrapping(oldval);
+            let operand_wrapped = Wrapping(0b1111_1111);
+            let decr = if old_wrapped.0 != 0 {
+                get_magnitude_tc(old_wrapped.add(operand_wrapped).0 as i8)
+            } else {
+                0xF // Sneaky shortcut.
+            };
+
+            // println!("The decreased value will be {}, aka {:#2b}, where the old value was {}", decr, decr, oldval);
+
+
+            // Adjust the correct register from within a register pair.
+            if high {
+                target.set_high_bcd(decr).unwrap();
+                // Toggle zero flag as appropriate.
+                self.flags.zero = RegPair::bcd_to_decimal(target.get_high()) == 0;
+            } else {
+                target.set_low_bcd(decr).unwrap();
+                // Toggle zero flag as appropriate.
+                self.flags.zero = RegPair::bcd_to_decimal(target.get_low()) == 0;
+            }
+            // Set the subtraction flag appropriately.
+            self.flags.subtraction = true;
+
+            // Toggle carry flag as appropriate.
+            // This checks if we had a carry from bit 3 to bit 4.
+            self.flags.half_carry = (decr & 0x10) == 0x10;
+            Ok(decr)
+        }
+    }
+
+    // fn rotate_r8(&mut self, dir: RotateDirection, reg: Registers, throughCarry: bool) {
+    //     // Match on the register
+    // }
+
+    fn rotate_a(&mut self, dir: RotateDirection, throughCarry: bool) {
+        match dir {
+            Left => {
+                // Check if we must also rotate through carry.
+                if !throughCarry {
+                    // Toggle the carry flag to match bit 7 prior to a rotate.
+                    self.flags.carry = (self.a & 0b1000_0000) == 0b1000_0000;
+                    self.a = self.a << 1;
+                    if self.flags.carry {
+                        self.a = self.a | 0b0000_0001;
+                    };
+                }
+            }
+            Right => {
+                if !throughCarry {
+                    // Toggle the carry flag to match bit 7 prior to a rotate.
+                    self.flags.carry = (self.a & 0b0000_0001) == 0b0000_0001;
+                    self.a = self.a >> 1;
+                    if self.flags.carry {
+                        self.a = self.a | 0b1000_0000;
+                    };
+                }
+            }
+        }
+    }
+
 }
 
 pub fn msb(v: u16) -> u8 {
@@ -744,12 +865,77 @@ mod opcodes {
     }
 
     #[test]
-    fn inc_b() {
+    fn inc_r8() {
         let mut cpu = CPU::new();
-        cpu.memory[0] = 0x04;
+        cpu.memory[0] = 0x04; // inc to 1.
         cpu.cycle();
         assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(false, cpu.flags.zero);
+        assert_eq!(false, cpu.flags.half_carry);
+        // increment BC to 9.
+        for i in 1..100 {
+            cpu.memory[i] = 0x04;
+            cpu.cycle();
+        }
+        assert_eq!(0, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(true, cpu.flags.zero);
+        assert_eq!(true, cpu.flags.half_carry);
+
+
+        cpu.memory[100] = 0x04;
+        cpu.cycle();
+        println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(false, cpu.flags.zero);
+        assert_eq!(false, cpu.flags.half_carry);
+
+        cpu.memory[101] = 0x05;
+        cpu.memory[102] = 0x05;
+        cpu.cycle();
+        assert_eq!(0, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(true, cpu.flags.zero);
+        assert_eq!(false, cpu.flags.half_carry);
+        println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        cpu.cycle();
+        assert_eq!(0xF, RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        assert_eq!(false, cpu.flags.zero);
+        assert_eq!(false, cpu.flags.half_carry); // Todo: Check this.
 
         // Todo: Add tests for 0x14, 0x24, 0x34, 0x0C, 0x1C, 0x2C
+    }
+
+    #[test]
+    fn load_r8_d8() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x06; // LD B, d8
+        cpu.memory[1] = 0xAB;
+        cpu.memory[2] = 0x06;
+        cpu.memory[3] = 0x01;
+        cpu.memory[4] = 0x06;
+        cpu.memory[5] = 0x00;
+        cpu.cycle();
+        assert_eq!(0xAB, cpu.bc.get_high());
+        cpu.cycle();
+        assert_eq!(0x01, cpu.bc.get_high());
+        cpu.cycle();
+        assert_eq!(0x00, cpu.bc.get_high());
+    }
+
+    #[test]
+    fn rxca() {
+        let mut cpu = CPU::new();
+        // Todo: Complete loading instructions so that A can be loaded.
+    }
+
+    #[test]
+    fn ld_a16_sp() {
+        let mut cpu = CPU::new();
+        cpu.sp = 0xABCD;
+        cpu.memory[0] = 0x08;
+        cpu.memory[1] = 0x04;
+        cpu.memory[2] = 0x00; // Sets the address to 0x0004.
+        cpu.cycle(); // We expect m[0x0004]: AB; m[0x0005]: CD.
+        assert_eq!(0xCD, cpu.memory[0x0004]);
+        assert_eq!(0xAB, cpu.memory[0x0005]);
     }
 }

@@ -127,13 +127,22 @@ mod tests {
     #[test]
     fn bcd() {
         let bcd = RegPair::decimal_to_bcd(32);
-        assert_eq!(bcd, Ok(0b0011_0010));
+        let bcd_val = bcd.unwrap();
+        println!("{:#04b}", bcd_val);
+        assert_eq!(bcd_val, 0b0011_0010);
+    }
+
+    #[test]
+    fn dec() {
+        let dec = RegPair::bcd_to_decimal(0b0111_0011);
+        println!("{:04b}", dec);
+        assert_eq!(dec, 0b1001001)
     }
 
     #[test]
     fn set_high() {
         let mut reg = RegPair::new();
-        reg.set_high_bcd(32);
+        reg.set_high_bcd(32).unwrap();
         assert_eq!(reg.get_high(), 0b0011_0010);
     }
 
