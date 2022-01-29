@@ -177,7 +177,7 @@ impl CPU {
     pub fn cycle(&mut self) {
         // Fetch opcode
         self.ir = self.memory[self.pc as usize];
-        println!("Opcode found: {:#2x}", self.ir);
+        // println!("Opcode found: {:#2x}", self.ir);
         // Program counter is incremented to enable operand reading.
         self.pc += 1;
         // Decode the opcode and execute.
@@ -208,11 +208,12 @@ impl CPU {
             0x04 => { self.inc_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8; }  // INC B
             0x05 => { self.dec_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8;}  // DEC B
             0x06 => {
+                // LD B,d8
                 self.mdr = self.read_memory(AddressingMode::ImmediateEight);
                 self.bc.set_high_bin(self.mdr as u8);
                 self.pc += 1;
                 self.cycles += 8;
-            }  // LD B,d8
+            }
             0x07 => { self.rotate_a(RotateDirection::Left, false); self.pc += 0; self.cycles += 4; }  // RLCA
             0x08 => {
                 // LD (a16),SP
@@ -231,28 +232,61 @@ impl CPU {
                 self.cycles += 20;
             }
             0x09 => {}  // ADD HL,BC
-            0x0A => {}  // LD A,(BC)
-            0x0B => {}  // DEC BC
+            0x0A => {
+                // LD A,(BC)
+                // Collect address and data
+                self.mar = self.bc.get_wide();
+                self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+
+                // Load bits into A.
+                self.a = self.mdr as u8;
+
+                // Increment PC and cycles as appropriate.
+                self.pc += 0;
+                self.cycles += 8;
+            }
+            0x0B => { self.bc.set_wide(self.bc.get_wide() - 1); self.pc += 0; self.cycles += 8; }  // DEC BC
             0x0C => { self.inc_reg_8(Registers::C).unwrap(); self.pc += 0; self.cycles += 8; }  // INC C
-            0x0D => {}  // DEC C
-            0x0E => {}  // LD C,d8
-            0x0F => {}  // RRCA
+            0x0D => { self.dec_reg_8(Registers::C).unwrap(); self.pc += 0; self.cycles += 8; }  // DEC C
+            0x0E => {
+                // LD C,d8
+                self.mdr = self.read_memory(AddressingMode::ImmediateEight);
+                self.bc.set_low_bin(self.mdr as u8);
+                self.pc += 1;
+                self.cycles += 8;
+            }
+            0x0F => { self.rotate_a(RotateDirection::Right, false); self.pc += 0; self.cycles += 4; }  // RRCA
 
             0x10 => {}
             0x11 => {}
             0x12 => {}
             0x13 => {}
-            0x14 => {}
-            0x15 => {}
-            0x16 => {}
-            0x17 => {}
+            0x14 => { self.inc_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } // INC D
+            0x15 => { self.dec_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } //  DEC D
+            0x16 => {
+                // LD D, d8
+                self.mdr = self.read_memory(AddressingMode::ImmediateEight);
+                self.de.set_high_bin(self.mdr as u8);
+                self.pc += 1;
+                self.cycles += 8;
+            }
+            0x17 => {
+                // RLA
+
+            }
             0x18 => {}
             0x19 => {}
             0x1A => {}
-            0x1B => {}
-            0x1C => {}
-            0x1D => {}
-            0x1E => {}
+            0x1B => { self.bc.set_wide(self.de.get_wide() - 1); self.pc += 0; self.cycles += 8; } // DEC DE
+            0x1C => { self.inc_reg_8(Registers::E).unwrap(); self.pc += 0; self.cycles += 8; } // INC E
+            0x1D => { self.dec_reg_8(Registers::E).unwrap(); self.pc += 0; self.cycles += 8;} // DEC E
+            0x1E => {
+                // LD E, d8
+                self.mdr = self.read_memory(AddressingMode::ImmediateEight);
+                self.de.set_low_bin(self.mdr as u8);
+                self.pc += 1;
+                self.cycles += 8;
+            }
             0x1F => {}
 
             0x20 => {}
@@ -266,10 +300,16 @@ impl CPU {
             0x28 => {}
             0x29 => {}
             0x2A => {}
-            0x2B => {}
-            0x2C => {}
-            0x2D => {}
-            0x2E => {}
+            0x2B => { self.hl.set_wide(self.hl.get_wide() - 1); self.pc += 0; self.cycles += 8; } // DEC HL
+            0x2C => { self.inc_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 8;} // INC L
+            0x2D => { self.dec_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 8; } // DEC L
+            0x2E => {
+                // LD L, d8
+                self.mdr = self.read_memory(AddressingMode::ImmediateEight);
+                self.hl.set_high_bin(self.mdr as u8);
+                self.pc += 1;
+                self.cycles += 8;
+            }
             0x2F => {}
 
             0x30 => {}
@@ -700,11 +740,11 @@ impl CPU {
     //     // Match on the register
     // }
 
-    fn rotate_a(&mut self, dir: RotateDirection, throughCarry: bool) {
+    fn rotate_a(&mut self, dir: RotateDirection, through_carry: bool) {
         match dir {
             Left => {
                 // Check if we must also rotate through carry.
-                if !throughCarry {
+                if !through_carry {
                     // Toggle the carry flag to match bit 7 prior to a rotate.
                     self.flags.carry = (self.a & 0b1000_0000) == 0b1000_0000;
                     self.a = self.a << 1;
@@ -714,7 +754,7 @@ impl CPU {
                 }
             }
             Right => {
-                if !throughCarry {
+                if !through_carry {
                     // Toggle the carry flag to match bit 7 prior to a rotate.
                     self.flags.carry = (self.a & 0b0000_0001) == 0b0000_0001;
                     self.a = self.a >> 1;
@@ -848,7 +888,7 @@ mod opcodes {
     use crate::components::register::RegPair;
 
     #[test]
-    fn inc_bc() {
+    fn inc_r16() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0x03;
         cpu.memory[1] = 0x03;
@@ -862,6 +902,19 @@ mod opcodes {
         assert_eq!(3, cpu.bc.get_wide());
         cpu.cycle();
         assert_eq!(4, cpu.bc.get_wide());
+        for i in 4..10 {
+            cpu.memory[i] = 0x0B;
+        }
+        cpu.cycle();
+        assert_eq!(3, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(2, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(1, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(0, cpu.bc.get_wide());
+        cpu.cycle();
+        assert_eq!(0xFF, cpu.bc.get_wide());
     }
 
     #[test]
@@ -884,7 +937,7 @@ mod opcodes {
 
         cpu.memory[100] = 0x04;
         cpu.cycle();
-        println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        // println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
         assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
         assert_eq!(false, cpu.flags.zero);
         assert_eq!(false, cpu.flags.half_carry);
@@ -895,13 +948,21 @@ mod opcodes {
         assert_eq!(0, RegPair::bcd_to_decimal(cpu.bc.get_high()));
         assert_eq!(true, cpu.flags.zero);
         assert_eq!(false, cpu.flags.half_carry);
-        println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
+        // println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
         cpu.cycle();
         assert_eq!(0xF, RegPair::bcd_to_decimal(cpu.bc.get_high()));
         assert_eq!(false, cpu.flags.zero);
         assert_eq!(false, cpu.flags.half_carry); // Todo: Check this.
 
         // Todo: Add tests for 0x14, 0x24, 0x34, 0x0C, 0x1C, 0x2C
+        // INC D
+        cpu.memory[103] = 0x14;
+        println!("DE: {:#2x}", cpu.de.get_wide());
+        let de = cpu.de.get_high();
+        cpu.cycle();
+        println!("DE: {:#2x}", cpu.de.get_wide());
+        assert_eq!(de + 1, RegPair::bcd_to_decimal(cpu.de.get_high()));
+
     }
 
     #[test]
