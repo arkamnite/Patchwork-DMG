@@ -193,8 +193,6 @@ impl CPU {
                 // LD BC,d16
                 self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
                 self.ld_reg_pair(RegisterPairs::BC);
-                self.pc += 2;
-                self.cycles += 12;
             }
             0x02 => {
                 // LD (BC), A
@@ -258,7 +256,11 @@ impl CPU {
             0x0F => { self.rotate_a(RotateDirection::Right, false); self.pc += 0; self.cycles += 4; }  // RRCA
 
             0x10 => {}
-            0x11 => {}
+            0x11 => {
+                // LD DE,d16
+                self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+                self.ld_reg_pair(RegisterPairs::DE);
+            }
             0x12 => {}
             0x13 => {}
             0x14 => { self.inc_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } // INC D
@@ -290,7 +292,13 @@ impl CPU {
             0x1F => {}
 
             0x20 => {}
-            0x21 => {}
+            0x21 => {
+                // LD HL,d16
+                self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+                self.ld_reg_pair(RegisterPairs::HL);
+                self.pc += 2;
+                self.cycles += 12;
+            }
             0x22 => {}
             0x23 => {}
             0x24 => {}
@@ -895,54 +903,6 @@ mod opcodes {
     }
 
     #[test]
-    fn inc_dec_r8() {
-        let mut cpu = CPU::new();
-        cpu.memory[0] = 0x04; // inc to 1.
-        cpu.cycle();
-        assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(false, cpu.flags.zero);
-        assert_eq!(false, cpu.flags.half_carry);
-        // increment BC to 9.
-        for i in 1..100 {
-            cpu.memory[i] = 0x04;
-            cpu.cycle();
-        }
-        assert_eq!(0, RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(true, cpu.flags.zero);
-        assert_eq!(true, cpu.flags.half_carry);
-
-
-        cpu.memory[100] = 0x04;
-        cpu.cycle();
-        // println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(1, RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(false, cpu.flags.zero);
-        assert_eq!(false, cpu.flags.half_carry);
-
-        cpu.memory[101] = 0x05;
-        cpu.memory[102] = 0x05;
-        cpu.cycle();
-        assert_eq!(0, RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(true, cpu.flags.zero);
-        assert_eq!(false, cpu.flags.half_carry);
-        // println!("{:#2b}", RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        cpu.cycle();
-        assert_eq!(0xF, RegPair::bcd_to_decimal(cpu.bc.get_high()));
-        assert_eq!(false, cpu.flags.zero);
-        assert_eq!(false, cpu.flags.half_carry); // Todo: Check this.
-
-        // Todo: Add tests for 0x14, 0x24, 0x34, 0x0C, 0x1C, 0x2C
-        // INC D
-        cpu.memory[103] = 0x14;
-        println!("DE: {:#2x}", cpu.de.get_wide());
-        let de = cpu.de.get_high();
-        cpu.cycle();
-        println!("DE: {:#2x}", cpu.de.get_wide());
-        assert_eq!(de + 1, RegPair::bcd_to_decimal(cpu.de.get_high()));
-
-    }
-
-    #[test]
     fn load_r8_d8() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0x06; // LD B, d8
@@ -979,12 +939,43 @@ mod opcodes {
 }
 
 #[cfg(test)]
+/// Instruction tests, grouped by specific categories of opcodes.
 mod opcode_category_tests {
-    #[test]
-    fn nop() {}
+    use crate::components::dmg_cpu::CPU;
+    use crate::components::register::RegPair;
 
     #[test]
-    fn ld_r16_d16() {}
+    /// Opcode 0x00
+    fn nop() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x00;
+        cpu.cycle();
+        assert_eq!(cpu.pc, 1);
+        assert_eq!(cpu.bc.get_wide(), 0);
+        assert_eq!(cpu.de.get_wide(), 0);
+        assert_eq!(cpu.hl.get_wide(), 0);
+        assert_eq!(cpu.sp, 0);
+    }
+
+    #[test]
+    fn ld_r16_d16() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x01; // LD BC, d16. Will spell out 0xABCD
+        cpu.memory[1] = 0xCD; // Lower bytes of 0xABCD
+        cpu.memory[2] = 0xAB; // Lower bytes of 0xABCD
+        cpu.cycle();
+        assert_eq!(cpu.bc.get_wide(), 0xABCD);
+        cpu.memory[3] = 0x11; // LD DE, d16
+        cpu.memory[4] = 0xEF;
+        cpu.memory[5] = 0xCD;
+        cpu.cycle();
+        assert_eq!(cpu.de.get_wide(), 0xCDEF);
+        cpu.memory[6] = 0x21; // LD HL, d16
+        cpu.memory[7] = 0xBB;
+        cpu.memory[8] = 0xAA;
+        cpu.cycle();
+        assert_eq!(cpu.hl.get_wide(), 0xAABB);
+    }
 
     #[test]
     fn ld_r16_a() {}
@@ -999,7 +990,21 @@ mod opcode_category_tests {
     fn dec_r8() {}
 
     #[test]
-    fn ld_r8_d8() {}
+    fn ld_r8_d8() {
+        let mut cpu = CPU::new();
+        cpu.memory[0] = 0x06; // LD B, d8
+        cpu.memory[1] = 0xAB;
+        cpu.memory[2] = 0x06;
+        cpu.memory[3] = 0x01;
+        cpu.memory[4] = 0x06;
+        cpu.memory[5] = 0x00;
+        cpu.cycle();
+        assert_eq!(0xAB, cpu.bc.get_high());
+        cpu.cycle();
+        assert_eq!(0x01, cpu.bc.get_high());
+        cpu.cycle();
+        assert_eq!(0x00, cpu.bc.get_high());
+    }
 
     #[test]
     fn rlca() {}
@@ -1009,9 +1014,6 @@ mod opcode_category_tests {
 
     #[test]
     fn add_r16_r16() {}
-
-    #[test]
-    fn ld_r8_d8() {}
 
     #[test]
     fn rrca() {}
@@ -1046,6 +1048,9 @@ mod opcode_category_tests {
     fn cpl() {}
 
     // 3x
+    #[test]
+    fn ld_sp_d16() {}
+
     #[test]
     fn inc_rd16() {}
 
