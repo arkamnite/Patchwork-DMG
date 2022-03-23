@@ -116,7 +116,7 @@ impl RegPair {
 
 impl Display for RegPair {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "high: {}, low: {}", self.high_bits, self.low_bits)
     }
 }
 
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn set_low() {
         let mut reg = RegPair::new();
-        reg.set_low_bcd(32);
+        reg.set_low_bcd(32).unwrap();
         assert_eq!(reg.get_low(), 0b0011_0010);
     }
 

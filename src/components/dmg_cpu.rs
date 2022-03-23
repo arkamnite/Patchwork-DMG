@@ -579,9 +579,9 @@ impl CPU {
             AddressingMode::RegisterPairDirect(reg) => {
                 self.memory[reg.get_wide() as usize]
             }
-            AddressingMode::RegisterDirect(reg, isHigh) => {
+            AddressingMode::RegisterDirect(reg, is_high) => {
                 // We will read from the memory address in either the high or low byte of the RegPair
-                if isHigh {
+                if is_high {
                     // println!("Reg value is {:#04x}", reg.get_high());
                     self.memory[reg.get_high() as usize]
                 } else {
@@ -742,7 +742,7 @@ impl CPU {
 
     fn rotate_a(&mut self, dir: RotateDirection, through_carry: bool) {
         match dir {
-            Left => {
+            RotateDirection::Left => {
                 // Check if we must also rotate through carry.
                 if !through_carry {
                     // Toggle the carry flag to match bit 7 prior to a rotate.
@@ -753,7 +753,7 @@ impl CPU {
                     };
                 }
             }
-            Right => {
+            RotateDirection::Right => {
                 if !through_carry {
                     // Toggle the carry flag to match bit 7 prior to a rotate.
                     self.flags.carry = (self.a & 0b0000_0001) == 0b0000_0001;
@@ -850,42 +850,19 @@ mod tests {
 }
 
 #[cfg(test)]
-mod opcode_tests {
-    // Opcode tests follow this naming convention.
-    // name_to_from()
-    // For example, 0x02 (LD (BC), A) => ld_mem_16_reg
-    // This may be followed by an addressing mode specifier, or an annotation to distinguish this test from similar to-from scenarios.
-
-    #[test]
-    fn ld_mem_8_reg() {
-
-    }
-
-    #[test]
-    fn ld_mem_16_reg() {
-
-    }
-
-    #[test]
-    fn ld_reg_reg() {
-
-    }
-
-    #[test]
-    fn ld_reg_mem_8() {
-
-    }
-
-    #[test]
-    fn ld_reg_mem_16() {
-
-    }
-}
-
-#[cfg(test)]
 mod opcodes {
     use crate::components::dmg_cpu::CPU;
     use crate::components::register::RegPair;
+
+    #[test]
+    fn ld_r16_d16() {
+
+    }
+
+    #[test]
+    fn ld_d16_r8() {
+
+    }
 
     #[test]
     fn inc_r16() {
@@ -918,7 +895,7 @@ mod opcodes {
     }
 
     #[test]
-    fn inc_r8() {
+    fn inc_dec_r8() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0x04; // inc to 1.
         cpu.cycle();
@@ -999,4 +976,239 @@ mod opcodes {
         assert_eq!(0xCD, cpu.memory[0x0004]);
         assert_eq!(0xAB, cpu.memory[0x0005]);
     }
+}
+
+#[cfg(test)]
+mod opcode_category_tests {
+    #[test]
+    fn nop() {}
+
+    #[test]
+    fn ld_r16_d16() {}
+
+    #[test]
+    fn ld_r16_a() {}
+
+    #[test]
+    fn inc_r16() {}
+
+    #[test]
+    fn inc_r8() {}
+
+    #[test]
+    fn dec_r8() {}
+
+    #[test]
+    fn ld_r8_d8() {}
+
+    #[test]
+    fn rlca() {}
+
+    #[test]
+    fn ld_a16_sp() {}
+
+    #[test]
+    fn add_r16_r16() {}
+
+    #[test]
+    fn ld_r8_d8() {}
+
+    #[test]
+    fn rrca() {}
+
+    // 1x
+    #[test]
+    fn stop() {}
+
+    #[test]
+    fn rla() {}
+
+    #[test]
+    fn jr_s8() {}
+
+    #[test]
+    fn rra() {}
+
+    // 2x
+    #[test]
+    fn jr_b_s8() {}
+
+    #[test]
+    fn ld_ri_r8() {}
+
+    #[test]
+    fn daa() {}
+
+    #[test]
+    fn ld_r8_ri16() {}
+
+    #[test]
+    fn cpl() {}
+
+    // 3x
+    #[test]
+    fn inc_rd16() {}
+
+    #[test]
+    fn dec_rd16() {}
+
+    #[test]
+    fn ld_rd16_d8() {}
+
+    #[test]
+    fn scf() {}
+
+    #[test]
+    fn ccf() {}
+
+    // 4x
+    #[test]
+    fn ld_r8_r8() {}
+
+    #[test]
+    fn ld_r8_rd16() {}
+
+    // 5x
+    #[test]
+    fn halt() {}
+
+    // 6x
+    #[test]
+    fn add_r8_r8() {}
+
+    #[test]
+    fn add_r8_rd16() {}
+
+    #[test]
+    fn adc_r8_r8() {}
+
+    #[test]
+    fn adc_r8_rd16() {}
+
+    // 7x
+    #[test]
+    fn sub_r8() {}
+
+    #[test]
+    fn sub_rd16() {}
+
+    #[test]
+    fn subc_r8_r8() {}
+
+    #[test]
+    fn subc_r8_rd16() {}
+
+    // 8x
+    #[test]
+    fn and_r8() {}
+
+    #[test]
+    fn and_rd16() {}
+
+    #[test]
+    fn xor_r8() {}
+
+    #[test]
+    fn xor_rd16() {}
+
+    // 9x
+    #[test]
+    fn or_r8() {}
+
+    #[test]
+    fn or_rd16() {}
+
+    #[test]
+    fn cp_r8() {}
+
+    #[test]
+    fn cp_rd16() {}
+
+    // Ax
+    #[test]
+    fn ret_b() {}
+
+    #[test]
+    fn pop_r16() {}
+
+    #[test]
+    fn jp_b_a16() {}
+
+    #[test]
+    fn jp_a16() {}
+
+    #[test]
+    fn call_b_a16() {}
+
+    #[test]
+    fn push_r16() {}
+
+    #[test]
+    fn add_r8_d8() {}
+
+    #[test]
+    fn rst() {}
+
+    #[test]
+    fn ret() {}
+
+    #[test]
+    fn call_a16() {}
+
+    #[test]
+    fn adc_r8_d8() {}
+
+    // Bx
+    #[test]
+    fn sub_d8() {}
+
+    #[test]
+    fn reti() {}
+
+    #[test]
+    fn sbc_r8_d8() {}
+
+    // Cx
+    #[test]
+    fn ld_a8_r8() {}
+
+    #[test]
+    fn ld_rd8_r8() {}
+
+    #[test]
+    fn and_d8() {}
+
+    #[test]
+    fn add_sp_s8() {}
+
+    #[test]
+    fn ld_a16_r8() {}
+
+    #[test]
+    fn xor_d8() {}
+
+    // Dx
+    #[test]
+    fn ld_r8_a8() {}
+
+    #[test]
+    fn di() {}
+
+    #[test]
+    fn or_d8() {}
+
+    #[test]
+    fn ld_r16_sp() {}
+
+    #[test]
+    fn ld_sp_hl() {}
+
+    #[test]
+    fn ld_r8_a16() {}
+
+    #[test]
+    fn ei() {}
+
+    #[test]
+    fn cp_d8() {}
 }
