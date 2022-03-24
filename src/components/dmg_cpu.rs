@@ -1,10 +1,14 @@
 use std::{error, fmt};
+use std::convert::TryFrom;
 use std::fmt::Formatter;
 use crate::components::register::{BitResult, RegPair};
 use std::num::Wrapping;
 use std::ops::Add;
 use anyhow::{anyhow, Result}; // Used for anyhow's Result type for all fallible functions in our program. Imports the macro as well.
-use thiserror::Error; // Allows us to create custom error types.
+use thiserror::Error;
+// Allows us to create custom error types.
+use ux;
+use ux::u4;
 
 pub struct CPU {
     /// The accumulator register.
@@ -59,6 +63,20 @@ impl Flags {
             half_carry: false,
             carry: false
         }
+    }
+
+    pub fn test_flags(&self, sample: &Flags) -> bool {
+        self.zero == sample.zero &&
+        self.subtraction == sample.subtraction &&
+        self.half_carry == sample.half_carry &&
+        self.carry == sample.carry
+    }
+
+    pub fn reset(&mut self) {
+        self.zero = false;
+        self.subtraction = false;
+        self.half_carry = false;
+        self.carry = false;
     }
 }
 
@@ -802,7 +820,6 @@ impl CPU {
         }
         Ok(())
     }
-
 }
 
 pub fn msb(v: u16) -> u8 {
@@ -983,7 +1000,7 @@ mod opcodes {
 #[cfg(test)]
 /// Instruction tests, grouped by specific categories of opcodes.
 mod opcode_category_tests {
-    use crate::components::dmg_cpu::CPU;
+    use crate::components::dmg_cpu::{CPU, Flags};
     use crate::components::register::RegPair;
 
     #[test]
@@ -1045,7 +1062,35 @@ mod opcode_category_tests {
     }
 
     #[test]
-    fn inc_r16() {}
+    fn inc_r16() {
+        let mut cpu = CPU::new();
+        let flags = Flags::new();
+        let instr = &[0x03, 0x13, 0x23, 0x33, 0x03, 0x13, 0x23, 0x33];
+        cpu.write_bytes(instr, 0).unwrap();
+        cpu.cycle(); // INC BC
+        cpu.cycle(); // INC DE
+        cpu.cycle(); // INC HL
+        cpu.cycle(); // INC SP
+        assert_eq!(cpu.bc.get_wide(), 0x01);
+        assert_eq!(cpu.de.get_wide(), 0x01);
+        assert_eq!(cpu.hl.get_wide(), 0x01);
+        assert_eq!(cpu.sp, 0x01);
+        assert_eq!(cpu.flags.test_flags(&flags), true);
+        cpu.bc.set_wide(0xFF);
+        cpu.de.set_wide(0xFF);
+        cpu.hl.set_wide(0xFF);
+        cpu.sp = 0xFF;
+        // Test wrapping
+        cpu.cycle(); // INC BC
+        cpu.cycle(); // INC DE
+        cpu.cycle(); // INC HL
+        cpu.cycle(); // INC SP
+        assert_eq!(cpu.bc.get_wide(), 0x00);
+        assert_eq!(cpu.de.get_wide(), 0x00);
+        assert_eq!(cpu.hl.get_wide(), 0x00);
+        assert_eq!(cpu.sp, 0x00);
+        assert_eq!(cpu.flags.test_flags(&flags), true);
+    }
 
     #[test]
     fn inc_r8() {}
