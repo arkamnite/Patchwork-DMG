@@ -3,6 +3,8 @@ use std::fmt::Formatter;
 use crate::components::register::{BitResult, RegPair};
 use std::num::Wrapping;
 use std::ops::Add;
+use anyhow::{anyhow, Result}; // Used for anyhow's Result type for all fallible functions in our program. Imports the macro as well.
+use thiserror::Error; // Allows us to create custom error types.
 
 pub struct CPU {
     /// The accumulator register.
@@ -259,9 +261,16 @@ impl CPU {
             0x11 => {
                 // LD DE,d16
                 self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+                println!("PC: {}", self.pc);
                 self.ld_reg_pair(RegisterPairs::DE);
+                println!("PC: {}", self.pc);
             }
-            0x12 => {}
+            0x12 => {
+                self.mar = self.bc.get_wide();
+                self.memory[self.mar as usize] = self.a as u16;
+                self.pc += 0;
+                self.cycles += 8;
+            }
             0x13 => {}
             0x14 => { self.inc_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } // INC D
             0x15 => { self.dec_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } //  DEC D
@@ -296,10 +305,13 @@ impl CPU {
                 // LD HL,d16
                 self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
                 self.ld_reg_pair(RegisterPairs::HL);
-                self.pc += 2;
-                self.cycles += 12;
             }
-            0x22 => {}
+            0x22 => {
+                self.mar = self.de.get_wide();
+                self.memory[self.mar as usize] = self.a as u16;
+                self.pc += 0;
+                self.cycles += 8;
+            }
             0x23 => {}
             0x24 => {}
             0x25 => {}
@@ -321,7 +333,13 @@ impl CPU {
             0x2F => {}
 
             0x30 => {}
-            0x31 => {}
+            0x31 => {
+                // LD HL,d16
+                self.mdr = self.read_memory(AddressingMode::ImmediateSixteen);
+                self.sp = self.mdr;
+                self.pc += 2;
+                self.cycles += 12;
+            }
             0x32 => {}
             0x33 => {}
             0x34 => {}
@@ -774,6 +792,17 @@ impl CPU {
         }
     }
 
+    fn write_bytes(&mut self, bytes: &[u16], index: usize) -> Result<()>{
+        if (index + bytes.len()) > 65536 {
+            return Err(anyhow!(MemoryError("BIG NUMBER")));
+        }
+
+        for i in 0..bytes.len() {
+            self.memory[i + index] = bytes[i];
+        }
+        Ok(())
+    }
+
 }
 
 pub fn msb(v: u16) -> u8 {
@@ -805,6 +834,10 @@ pub fn get_magnitude_tc(from: i8) -> u8 {
         from as u8
     }
 }
+
+#[derive(Debug, Error)]
+#[error("Attempted to write to invalid memory index {0}")]
+pub struct MemoryError(pub &'static str);
 
 #[cfg(test)]
 mod tests {
@@ -854,6 +887,15 @@ mod tests {
         assert_eq!(1334, cpu.read_memory(RegisterPairDirect(&reg)));
         assert_eq!(15, cpu.read_memory(RegisterDirect(&reg, true)));
         assert_eq!(32, cpu.read_memory(RegisterDirect(&reg, false)));
+    }
+
+    #[test]
+    fn write_bytes() {
+        let mut cpu = CPU::new();
+        cpu.write_bytes(&[0xA, 0xB, 0xC, 0xD], 0).unwrap();
+        assert_eq!(cpu.memory[0..4], [0xA, 0xB, 0xC, 0xD]);
+        cpu.write_bytes(&[0xA, 0xB, 0xC, 0xD, 0xE], 1).unwrap();
+        assert_eq!(cpu.memory[1..6], [0xA, 0xB, 0xC, 0xD, 0xE]);
     }
 }
 
@@ -958,6 +1000,9 @@ mod opcode_category_tests {
     }
 
     #[test]
+    /// Opcodes tested:
+    /// - 0x01, 0x11, 0x21
+    ///
     fn ld_r16_d16() {
         let mut cpu = CPU::new();
         cpu.memory[0] = 0x01; // LD BC, d16. Will spell out 0xABCD
@@ -975,10 +1020,29 @@ mod opcode_category_tests {
         cpu.memory[8] = 0xAA;
         cpu.cycle();
         assert_eq!(cpu.hl.get_wide(), 0xAABB);
+        cpu.write_bytes(&[0x31, 0xBB, 0xAA], 9).unwrap(); // LD SP d16
+        cpu.cycle();
+        assert_eq!(cpu.sp, 0xAABB);
     }
 
     #[test]
-    fn ld_r16_a() {}
+    fn ld_r16_a() {
+        let mut cpu = CPU::new();
+        cpu.a = 0xAB;
+        // Load addresses into BC and DE, then store the accumulator value
+        // into these memory addresses.
+        // BC = 0x000A, DE = 0x000C, HL = 0x000F
+        let instr = &[0x01, 0x0A, 0x00, 0x11, 0x0C, 0x00, 0x02, 0x12];
+        cpu.write_bytes(instr, 1).unwrap();
+        cpu.cycle(); // LD BC, d16
+        cpu.cycle(); // LD DE, d16
+        cpu.cycle(); // LD (BC), A
+        println!("IR: {}", cpu.ir);
+        assert_eq!(cpu.memory[0x000A], 0xAB);
+        cpu.cycle(); // LD (DE), A
+        assert_eq!(cpu.memory[0x000A], 0xAB);
+        assert_eq!(cpu.memory[0x000C], 0xAB);
+    }
 
     #[test]
     fn inc_r16() {}
