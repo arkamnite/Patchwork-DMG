@@ -223,8 +223,8 @@ impl CPU {
                 self.cycles += 8;
             }
             0x03 => { self.bc.set_wide(self.bc.get_wide() + 1); self.pc += 0; self.cycles += 8; }  // INC BC
-            0x04 => { self.inc_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8; }  // INC B
-            0x05 => { self.dec_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 8;}  // DEC B
+            0x04 => { self.inc_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 4; }  // INC B
+            0x05 => { self.dec_reg_8(Registers::B).unwrap(); self.pc += 0; self.cycles += 4;}  // DEC B
             0x06 => {
                 // LD B,d8
                 self.mdr = self.read_memory(AddressingMode::ImmediateEight);
@@ -290,8 +290,8 @@ impl CPU {
                 self.cycles += 8;
             }
             0x13 => {}
-            0x14 => { self.inc_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } // INC D
-            0x15 => { self.dec_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 8; } //  DEC D
+            0x14 => { self.inc_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 4; } // INC D
+            0x15 => { self.dec_reg_8(Registers::D).unwrap(); self.pc += 0; self.cycles += 4; } //  DEC D
             0x16 => {
                 // LD D, d8
                 self.mdr = self.read_memory(AddressingMode::ImmediateEight);
@@ -331,7 +331,7 @@ impl CPU {
                 self.cycles += 8;
             }
             0x23 => {}
-            0x24 => {}
+            0x24 => { self.inc_reg_8(Registers::H).unwrap(); self.pc += 0; self.cycles += 4; } // INC H
             0x25 => {}
             0x26 => {}
             0x27 => {}
@@ -339,8 +339,8 @@ impl CPU {
             0x29 => {}
             0x2A => {}
             0x2B => { self.hl.set_wide(self.hl.get_wide() - 1); self.pc += 0; self.cycles += 8; } // DEC HL
-            0x2C => { self.inc_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 8;} // INC L
-            0x2D => { self.dec_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 8; } // DEC L
+            0x2C => { self.inc_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 4;} // INC L
+            0x2D => { self.dec_reg_8(Registers::L).unwrap(); self.pc += 0; self.cycles += 4; } // DEC L
             0x2E => {
                 // LD L, d8
                 self.mdr = self.read_memory(AddressingMode::ImmediateEight);
@@ -368,7 +368,13 @@ impl CPU {
             0x39 => {}
             0x3A => {}
             0x3B => {}
-            0x3C => {}
+            0x3C => {
+                let (a_val, flags) = self.inc_a_sp(&self.a).unwrap();
+                self.a = a_val;
+                self.flags = flags;
+                self.pc += 0;
+                self.cycles += 12;
+            }
             0x3D => {}
             0x3E => {}
             0x3F => {}
@@ -671,12 +677,26 @@ impl CPU {
         self.cycles += 8;
     }
 
+    fn get_regpair(&self, reg: Registers) -> Option<&RegPair> {
+        let ret = match reg {
+            Registers::B => { Some(&self.bc) }
+            Registers::C => { Some(&self.bc) }
+            Registers::D => { Some(&self.de) }
+            Registers::E => { Some(&self.de) }
+            Registers::H => { Some(&self.hl) }
+            Registers::L => { Some(&self.hl) }
+            _ => { None }
+        };
+
+        ret
+    }
+
     /// Increment the value stored in one half-register (i.e. a single register).
     /// It will increment the BCD value inside this register and hence the result will be stored as BCD too.
     fn inc_reg_8(&mut self, reg: Registers) -> Result<u8, OpcodeError> {
         // Match the correct RegisterPair and store the correct reference.
         let mut high = false;
-        let regtarg: Option<&mut RegPair> = match reg {
+        let register_target: Option<&mut RegPair> = match reg {
             Registers::B => { high = true; Some(&mut self.bc) }
             Registers::C => { high = false; Some(&mut self.bc) }
             Registers::D => { high = true; Some(&mut self.de) }
@@ -686,12 +706,14 @@ impl CPU {
             _ => { None }
         };
 
+        // let mut register_target = self.get_regpair(reg);
+
         // Check if this was used appropriately.
-        return if regtarg.is_none() {
+        return if register_target.is_none() {
             Err(OpcodeError::new("Attempted to increment the A or SP register.".to_string(), self.ir as u8))
         } else {
             // Create our local register target from within a register pair.
-            let target = regtarg.unwrap();
+            let target = register_target.unwrap();
 
             // Create a local copy of the old value.
             let oldval = if high {
@@ -780,9 +802,30 @@ impl CPU {
         }
     }
 
-    // fn rotate_r8(&mut self, dir: RotateDirection, reg: Registers, throughCarry: bool) {
-    //     // Match on the register
-    // }
+    /// Increment either the a or the sp register.
+    fn inc_a_sp(&self, target: &u8) -> Result<(u8, Flags)> {
+        // Log the old value.
+        let old_value = *target;
+
+        // Adjust the value.
+        // *target = old_value + 1;
+
+        // Create custom flags.
+        let mut flags = Flags::new();
+        flags.carry = self.flags.carry;
+        // Adjust the zero flag.
+        flags.zero = (old_value + 1) == 0;
+
+        // This instruction always sets the subtraction flag to false;
+        flags.subtraction = false;
+
+        // Toggle carry flag as appropriate.
+        // We need to toggle a half carry if the 0th bit of the old value is set yet incrementing resulted in an overall zero.
+        // This is the only way we would have caused a carry on the third bit.
+        flags.half_carry = ((old_value & 0b0001) == 0b0001) && flags.zero;
+
+        Ok((old_value + 1, flags))
+    }
 
     fn rotate_a(&mut self, dir: RotateDirection, through_carry: bool) {
         match dir {
@@ -1093,7 +1136,26 @@ mod opcode_category_tests {
     }
 
     #[test]
-    fn inc_r8() {}
+    fn inc_r8() {
+        let mut cpu = CPU::new();
+        // INC B, INC D, INC H, INC C, INC E, INC L, INC A
+        let instr = &[0x04, 0x14, 0x24, 0x0C, 0x1C, 0x2C, 0x3C];
+        cpu.write_bytes(instr, 0).unwrap();
+        cpu.write_bytes(instr, 7).unwrap();
+        // Cycle CPU through all instructions.
+        for _ in 0..14 {
+            cpu.cycle();
+        }
+        assert_eq!(cpu.a, 2);
+        assert_eq!(cpu.bc.get_high(), 2);
+        assert_eq!(cpu.bc.get_low(), 2);
+        assert_eq!(cpu.de.get_high(), 2);
+        assert_eq!(cpu.de.get_low(), 2);
+        assert_eq!(cpu.hl.get_high(), 2);
+        assert_eq!(cpu.hl.get_low(), 2);
+
+        // TODO: Check flags are toggled.
+    }
 
     #[test]
     fn dec_r8() {}
