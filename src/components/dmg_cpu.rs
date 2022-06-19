@@ -1154,6 +1154,7 @@ mod opcode_category_tests {
         assert_eq!(cpu.hl.get_high(), 2);
         assert_eq!(cpu.hl.get_low(), 2);
 
+        cpu.a = 0xFF;
         // TODO: Check flags are toggled.
     }
 
