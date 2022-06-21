@@ -23,6 +23,12 @@ You can view the current roadmap for the project here- this is the rough order i
 - [ ] User interface
 
 ## Project Log 🌀
+
+### 21/06/22: Large Update
+There has been sporadic on and off development due to the demands of my degree as well as other commitments, and yet this has still led to several milestones being met:
+- Added unit test skeletons for every single 8-bit opcode; completed several unit test cases, and fulfilled them.
+- **Major** Implemented rudimentary graphics system with SDL2, which allows the rendering of tiles which are defined as an array of 16 bytes, all representing 2bpp pixels. These render correctly on-screen and can use several different palettes. This is now ready to be integrated into the CPU via the use of a software emulated tilemap, which the CPU should be able to modify via the memory mapped IO.
+
 #### 18/12/21: INC BC, INC B
 Added error type for failed opcode execution (this should be set to `NOP` when there is an error),
 wrote some unit tests and also implemented opcode `INC r8` using a function that can be expanded
